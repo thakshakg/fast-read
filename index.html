@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DuckDB R2 Query</title>
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>Query Data with DuckDB WASM</h1>
+    <div>
+        <label for="parquetUrl">Parquet File URL:</label>
+        <input type="text" id="parquetUrl" name="parquetUrl" style="width: 500px;" placeholder="https://path/to/your/file.parquet">
+    </div>
+    <br>
+    <button onclick="runQuery()">Run Query</button>
+    <div style="margin-top: 10px; margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9;">
+        <strong>Important Note on CORS:</strong> For DuckDB WASM to access a Parquet file from a URL, the server hosting the file (e.g., AWS S3, Azure Blob Storage, Google Cloud Storage) must be configured with Cross-Origin Resource Sharing (CORS) headers. These headers need to allow requests from the domain where this page is hosted, or be set to allow all origins (e.g., <code>Access-Control-Allow-Origin: *</code>). Without proper CORS configuration, the browser will block the request.
+    </div>
+    <table id="resultsTable">
+        <thead></thead>
+        <tbody></tbody>
+    </table>
+
+    <script type="module">
+        import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/dist/duckdb-browser-mvp. يعمل.js';
+
+        async function runQuery() {
+            const parquetUrlInput = document.getElementById('parquetUrl');
+            const fileURL = parquetUrlInput.value.trim();
+
+            if (!fileURL) {
+                alert('Please enter a URL for the Parquet file.');
+                return;
+            }
+
+            // Basic check for Parquet extension, can be improved
+            if (!fileURL.toLowerCase().endsWith('.parquet')) {
+                alert('The URL does not seem to point to a .parquet file. Please check the URL.');
+                // Optionally, you might still want to proceed or add stricter validation
+            }
+
+            try {
+                const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
+                const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+                const worker = await duckdb.createWorker(bundle.mainWorker);
+                const logger = new duckdb.ConsoleLogger();
+                const db = new duckdb.AsyncDuckDB(logger, worker);
+                await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+                await db.open({ query: { castTimestampToDate: true } });
+
+                const conn = await db.connect();
+
+                // Use the user-provided URL in the query
+                // Note: DuckDB can read directly from HTTP(S) URLs for Parquet files.
+                // For more complex scenarios or other file types, registration might be needed:
+                // await db.registerFileURL('my_data.parquet', fileURL, duckdb.DuckDBDataProtocol.HTTP, false);
+                // const queryResult = await conn.query(`SELECT * FROM 'my_data.parquet' LIMIT 10;`);
+
+                const queryResult = await conn.query(`SELECT * FROM '${fileURL}' LIMIT 10;`);
+
+                await conn.close();
+                await db.terminate();
+                await worker.terminate();
+
+                displayResults(queryResult.toArray());
+            } catch (e) {
+                console.error(e);
+                alert('Error running query: ' + e);
+            }
+        }
+
+        function displayResults(data) {
+            const table = document.getElementById('resultsTable');
+            const thead = table.querySelector('thead');
+            const tbody = table.querySelector('tbody');
+
+            // Clear previous results
+            thead.innerHTML = '';
+            tbody.innerHTML = '';
+
+            if (data.length === 0) {
+                return;
+            }
+
+            // Create table headers
+            const headers = Object.keys(data[0]);
+            const headerRow = document.createElement('tr');
+            headers.forEach(headerText => {
+                const th = document.createElement('th');
+                th.textContent = headerText;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+
+            // Create table rows
+            data.forEach(rowData => {
+                const row = document.createElement('tr');
+                headers.forEach(header => {
+                    const td = document.createElement('td');
+                    td.textContent = rowData[header];
+                    row.appendChild(td);
+                });
+                tbody.appendChild(row);
+            });
+        }
+
+        // Make runQuery globally accessible for the button
+        window.runQuery = runQuery;
+    </script>
+</body>
+</html>
