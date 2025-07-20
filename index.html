@@ -48,38 +48,81 @@
         #customClauses {
             border: 1px solid #555;
         }
+        .action-button {
+            background-color: #FFD700;
+            color: black;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .action-button:hover {
+            background-color: #E5C100;
+        }
+        .component-wrapper {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #444;
+            border-radius: 5px;
+        }
+        h1 {
+            color: #FFD700;
+        }
+        #resultsTable th {
+            color: #FFD700;
+        }
+        .group-wrapper {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #555;
+            border-radius: 5px;
+        }
     </style>
 </head>
 <body>
-    <h1>Query Data with DuckDB WASM</h1>
-    <div>
-        <input type="radio" id="sourceUrl" name="dataSource" value="url" checked>
-        <label for="sourceUrl">Parquet File URL:</label>
-        <input type="text" id="parquetUrl" name="parquetUrl" style="width: 500px;" placeholder="https://path/to/your/file.parquet">
-    </div>
-    <div>
-        <input type="radio" id="sourceLocal" name="dataSource" value="local">
-        <label for="sourceLocal">Local Parquet File:</label>
-        <input type="file" id="localParquetFile" name="localParquetFile" accept=".parquet">
-    </div>
-    <br>
-    <div id="queryBuilder">
-        <label for="queryBuilder">Custom Query:</label>
-        <br>
-        <div style="display: flex; align-items: center; padding: 5px; border-radius: 5px; width: 500px;">
-            <span style="padding: 5px;">SELECT</span>
-            <select id="columns" multiple style="width: 150px; height: 100px; margin-left: 5px;"></select>
-            <span style="padding: 5px; margin-left: 5px;">FROM 'my_data.parquet'</span>
-            <textarea id="customClauses" rows="4" style="width: 200px; margin-left: 5px;" placeholder="e.g., WHERE ... LIMIT ..."></textarea>
+    <h1>Query your Parquet Files</h1>
+    <div class="group-wrapper">
+        <div class="component-wrapper">
+            <input type="radio" id="sourceUrl" name="dataSource" value="url" checked>
+            <label for="sourceUrl">Parquet File URL:</label>
+            <input type="text" id="parquetUrl" name="parquetUrl" style="width: 500px;" placeholder="https://path/to/your/file.parquet">
         </div>
-    </div>
-    <div style="display:none;">
-        <label for="customQuery">Custom Query:</label>
+        <div class="component-wrapper">
+            <input type="radio" id="sourceLocal" name="dataSource" value="local">
+            <label for="sourceLocal">Local Parquet File:</label>
+            <input type="file" id="localParquetFile" name="localParquetFile" accept=".parquet">
+        </div>
         <br>
-        <textarea id="customQuery" name="customQuery" rows="4" style="width: 500px;">SELECT * FROM 'my_data.parquet' LIMIT 10;</textarea>
+        <button class="action-button" onclick="loadFile()">Load File</button>
     </div>
     <br>
-    <button onclick="runQuery()">Run Query</button>
+    <br>
+    <div class="group-wrapper">
+        <div class="component-wrapper">
+            <label>Query Mode:</label>
+            <input type="radio" id="modeBasic" name="queryMode" value="basic" checked>
+            <label for="modeBasic">Basic</label>
+            <input type="radio" id="modeAdvanced" name="queryMode" value="advanced">
+            <label for="modeAdvanced">Advanced</label>
+        </div>
+        <br>
+        <div id="queryBuilder">
+            <div style="display: flex; align-items: center; padding: 5px; border-radius: 5px; width: 500px;">
+                <span style="padding: 5px;">SELECT</span>
+                <select id="columns" multiple style="width: 150px; height: 100px; margin-left: 5px;"></select>
+                <span style="padding: 5px; margin-left: 5px;">FROM 'my_data.parquet'</span>
+                <textarea id="customClauses" rows="4" style="width: 200px; margin-left: 5px;">LIMIT 10</textarea>
+            </div>
+        </div>
+        <div id="advancedQueryBuilder" style="display:none;">
+            <label for="customQuery">Custom Query:</label>
+            <br>
+            <textarea id="customQuery" name="customQuery" rows="4" style="width: 500px;">SELECT * FROM 'my_data.parquet' LIMIT 10;</textarea>
+        </div>
+        <br>
+        <button class="action-button" onclick="runQuery()">Run Query</button>
+    </div>
     <div style="margin-top: 10px; margin-bottom: 10px; padding: 10px; border: 1px solid #555; background-color: #222; border-radius: 5px;">
         <strong>Instructions:</strong>
         <ul>
@@ -99,7 +142,7 @@
     <script type="module">
         import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.1-dev132.0/+esm';
 
-        async function updateColumns() {
+        async function loadFile() {
             const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
             let fileURL = '';
             let localFile = null;
@@ -153,20 +196,27 @@
         }
 
         async function runQuery() {
-            const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
-            const selectedColumns = Array.from(document.getElementById('columns').selectedOptions).map(o => o.value);
-            const customClauses = document.getElementById('customClauses').value.trim();
+            const queryMode = document.querySelector('input[name="queryMode"]:checked').value;
+            let query;
 
-            if (selectedColumns.length === 0) {
-                alert('Please select at least one column.');
-                return;
+            if (queryMode === 'basic') {
+                const selectedColumns = Array.from(document.getElementById('columns').selectedOptions).map(o => o.value);
+                if (selectedColumns.length === 0) {
+                    alert('Please select at least one column.');
+                    return;
+                }
+                const columnsString = selectedColumns.join(', ');
+                const customClauses = document.getElementById('customClauses').value.trim();
+                query = `SELECT ${columnsString} FROM 'my_data.parquet' ${customClauses}`;
+            } else {
+                query = document.getElementById('customQuery').value.trim();
+                if (!query) {
+                    alert('Please enter a custom query.');
+                    return;
+                }
             }
 
-            const columnsString = selectedColumns.join(', ');
-            const customQuery = `SELECT ${columnsString} FROM 'my_data.parquet' ${customClauses}`;
-            document.getElementById('customQuery').value = customQuery;
-
-
+            const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
             let fileURL = '';
             let localFile = null;
 
@@ -206,7 +256,7 @@
                     await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
                 }
 
-                const queryResult = await conn.query(customQuery);
+                const queryResult = await conn.query(query);
 
                 await conn.close();
                 await db.terminate();
@@ -254,13 +304,24 @@
             });
         }
 
+        function updateQueryMode() {
+            const queryMode = document.querySelector('input[name="queryMode"]:checked').value;
+            if (queryMode === 'basic') {
+                document.getElementById('queryBuilder').style.display = 'block';
+                document.getElementById('advancedQueryBuilder').style.display = 'none';
+            } else {
+                document.getElementById('queryBuilder').style.display = 'none';
+                document.getElementById('advancedQueryBuilder').style.display = 'block';
+            }
+        }
+
         // Make runQuery globally accessible for the button
         window.runQuery = runQuery;
+        window.updateQueryMode = updateQueryMode;
+        window.loadFile = loadFile;
 
-        document.getElementById('parquetUrl').addEventListener('change', updateColumns);
-        document.getElementById('localParquetFile').addEventListener('change', updateColumns);
-        document.getElementById('sourceUrl').addEventListener('change', updateColumns);
-        document.getElementById('sourceLocal').addEventListener('change', updateColumns);
+        document.getElementById('modeBasic').addEventListener('change', updateQueryMode);
+        document.getElementById('modeAdvanced').addEventListener('change', updateQueryMode);
     </script>
 </body>
 </html>
