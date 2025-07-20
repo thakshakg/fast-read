@@ -46,6 +46,7 @@
             <li>Write your SQL query in the custom query text area. The table name is <code>my_data.parquet</code>.</li>
             <li>Click "Run Query" to see the results.</li>
         </ul>
+        <strong>Important Note on CORS:</strong> For DuckDB WASM to access a Parquet file from a URL, the server hosting the file (e.g., AWS S3, Azure Blob Storage, Google Cloud Storage) must be configured with Cross-Origin Resource Sharing (CORS) headers. These headers need to allow requests from the domain where this page is hosted, or be set to allow all origins (e.g., <code>Access-Control-Allow-Origin: *</code>). Without proper CORS configuration, the browser will block the request.
     </div>
     <table id="resultsTable">
         <thead></thead>
