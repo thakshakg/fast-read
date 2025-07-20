@@ -20,13 +20,32 @@
 <body>
     <h1>Query Data with DuckDB WASM</h1>
     <div>
-        <label for="parquetUrl">Parquet File URL:</label>
+        <input type="radio" id="sourceUrl" name="dataSource" value="url" checked>
+        <label for="sourceUrl">Parquet File URL:</label>
         <input type="text" id="parquetUrl" name="parquetUrl" style="width: 500px;" placeholder="https://path/to/your/file.parquet">
+    </div>
+    <div>
+        <input type="radio" id="sourceLocal" name="dataSource" value="local">
+        <label for="sourceLocal">Local Parquet File:</label>
+        <input type="file" id="localParquetFile" name="localParquetFile" accept=".parquet">
+    </div>
+    <br>
+    <div>
+        <label for="customQuery">Custom Query:</label>
+        <br>
+        <textarea id="customQuery" name="customQuery" rows="4" style="width: 500px;">SELECT * FROM 'my_data.parquet' LIMIT 10;</textarea>
     </div>
     <br>
     <button onclick="runQuery()">Run Query</button>
     <div style="margin-top: 10px; margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9;">
-        <strong>Important Note on CORS:</strong> For DuckDB WASM to access a Parquet file from a URL, the server hosting the file (e.g., AWS S3, Azure Blob Storage, Google Cloud Storage) must be configured with Cross-Origin Resource Sharing (CORS) headers. These headers need to allow requests from the domain where this page is hosted, or be set to allow all origins (e.g., <code>Access-Control-Allow-Origin: *</code>). Without proper CORS configuration, the browser will block the request.
+        <strong>Instructions:</strong>
+        <ul>
+            <li>Select whether you want to query a Parquet file from a URL or a local file.</li>
+            <li>If using a URL, paste the URL in the text box. The server hosting the file must have CORS enabled.</li>
+            <li>If using a local file, select the file using the file picker.</li>
+            <li>Write your SQL query in the custom query text area. The table name is <code>my_data.parquet</code>.</li>
+            <li>Click "Run Query" to see the results.</li>
+        </ul>
     </div>
     <table id="resultsTable">
         <thead></thead>
@@ -37,18 +56,33 @@
         import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.1-dev132.0/+esm';
 
         async function runQuery() {
-            const parquetUrlInput = document.getElementById('parquetUrl');
-            const fileURL = parquetUrlInput.value.trim();
+            const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
+            const customQuery = document.getElementById('customQuery').value.trim();
 
-            if (!fileURL) {
-                alert('Please enter a URL for the Parquet file.');
+            if (!customQuery) {
+                alert('Please enter a query.');
                 return;
             }
 
-            // Basic check for Parquet extension, can be improved
-            if (!fileURL.toLowerCase().endsWith('.parquet')) {
-                alert('The URL does not seem to point to a .parquet file. Please check the URL.');
-                // Optionally, you might still want to proceed or add stricter validation
+            let fileURL = '';
+            let localFile = null;
+
+            if (dataSource === 'url') {
+                fileURL = document.getElementById('parquetUrl').value.trim();
+                if (!fileURL) {
+                    alert('Please enter a URL for the Parquet file.');
+                    return;
+                }
+                if (!fileURL.toLowerCase().endsWith('.parquet')) {
+                    alert('The URL does not seem to point to a .parquet file. Please check the URL.');
+                }
+            } else {
+                const localFileInput = document.getElementById('localParquetFile');
+                if (localFileInput.files.length === 0) {
+                    alert('Please select a local Parquet file.');
+                    return;
+                }
+                localFile = localFileInput.files[0];
             }
 
             try {
@@ -62,13 +96,14 @@
 
                 const conn = await db.connect();
 
-                // Use the user-provided URL in the query
-                // Note: DuckDB can read directly from HTTP(S) URLs for Parquet files.
-                // For more complex scenarios or other file types, registration might be needed:
-                // await db.registerFileURL('my_data.parquet', fileURL, duckdb.DuckDBDataProtocol.HTTP, false);
-                // const queryResult = await conn.query(`SELECT * FROM 'my_data.parquet' LIMIT 10;`);
+                if (dataSource === 'url') {
+                    await db.registerFileURL('my_data.parquet', fileURL, duckdb.DuckDBDataProtocol.HTTP, false);
+                } else {
+                    const buffer = await localFile.arrayBuffer();
+                    await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
+                }
 
-                const queryResult = await conn.query(`SELECT * FROM '${fileURL}' LIMIT 10;`);
+                const queryResult = await conn.query(customQuery);
 
                 await conn.close();
                 await db.terminate();
