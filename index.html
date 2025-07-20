@@ -109,51 +109,70 @@
 </head>
 <body>
     <h1>Query your Parquet Files</h1>
-    <div class="group-wrapper">
-        <div class="component-wrapper">
-            <div class="radio-group">
-                <input type="radio" id="sourceUrl" name="dataSource" value="url" checked>
-                <label for="sourceUrl">Parquet File URL:</label>
-            </div>
-            <input type="text" id="parquetUrl" name="parquetUrl" placeholder="https://path/to/your/file.parquet">
+
+    <div class="group-wrapper" style="display: flex; align-items: center;">
+        <label style="margin-right: 15px;">Mode:</label>
+        <div class="radio-group">
+            <input type="radio" id="modeBasic" name="mode" value="basic" checked>
+            <label for="modeBasic">Basic</label>
         </div>
-        <div class="component-wrapper">
-            <div class="radio-group">
-                <input type="radio" id="sourceLocal" name="dataSource" value="local">
-                <label for="sourceLocal">Local Parquet File:</label>
-            </div>
-            <input type="file" id="localParquetFile" name="localParquetFile" accept=".parquet">
+        <div class="radio-group">
+            <input type="radio" id="modeAdvanced" name="mode" value="advanced">
+            <label for="modeAdvanced">Advanced</label>
         </div>
-        <br>
-        <button class="action-button" onclick="loadFile()">Load File</button>
     </div>
-    <br>
-    <br>
-    <div class="group-wrapper">
-        <div class="component-wrapper">
-            <label>Query Mode:</label>
-            <div class="radio-group">
-                <input type="radio" id="modeBasic" name="queryMode" value="basic" checked>
-                <label for="modeBasic">Basic</label>
+
+    <div id="basicMode">
+        <div class="group-wrapper">
+            <div class="component-wrapper">
+                <div class="radio-group">
+                    <input type="radio" id="sourceUrl" name="dataSource" value="url" checked>
+                    <label for="sourceUrl">Parquet File URL:</label>
+                </div>
+                <input type="text" id="parquetUrl" name="parquetUrl" placeholder="https://path/to/your/file.parquet">
             </div>
-            <div class="radio-group">
-                <input type="radio" id="modeAdvanced" name="queryMode" value="advanced">
-                <label for="modeAdvanced">Advanced</label>
+            <div class="component-wrapper">
+                <div class="radio-group">
+                    <input type="radio" id="sourceLocal" name="dataSource" value="local">
+                    <label for="sourceLocal">Local Parquet File:</label>
+                </div>
+                <input type="file" id="localParquetFile" name="localParquetFile" accept=".parquet">
             </div>
+            <br>
+            <button class="action-button" onclick="loadFile()">Load File</button>
         </div>
-        <br>
-        <div id="queryBuilder">
-            <div>
-                <span>SELECT</span>
-                <select id="columns" multiple></select>
-                <span>FROM 'my_data.parquet'</span>
-                <textarea id="customClauses" rows="4">LIMIT 10</textarea>
+        <div class="group-wrapper">
+            <div id="queryBuilder">
+                <div>
+                    <span>SELECT</span>
+                    <select id="columns" multiple></select>
+                    <span>FROM 'my_data.parquet'</span>
+                    <textarea id="customClauses" rows="4">LIMIT 10</textarea>
+                </div>
             </div>
+            <br>
+            <button class="action-button" onclick="runQuery()">Run Query</button>
         </div>
-        <div id="advancedQueryBuilder" style="display:none;">
+    </div>
+
+    <div id="advancedMode" style="display:none;">
+        <div class="group-wrapper" id="fileUploads">
+            <div class="component-wrapper">
+                <input type="text" id="fileName_1" name="fileName" placeholder="Unique Name">
+                <input type="radio" id="sourceUrl_1" name="dataSource_1" value="url" checked onchange="toggleFilePInput(1)">
+                <label for="sourceUrl_1">URL</label>
+                <input type="text" id="fileUrl_1" name="fileUrl" placeholder="https://path/to/your/file.parquet">
+                <input type="radio" id="sourceLocal_1" name="dataSource_1" value="local" onchange="toggleFilePInput(1)">
+                <label for="sourceLocal_1">Local</label>
+                <input type="file" id="file_1" name="file" accept=".parquet" style="display: none;">
+            </div>
+            <button class="action-button" onclick="addFile()">Add File</button>
+        </div>
+        <button class="action-button" onclick="loadFile()" style="margin-bottom: 20px;">Load Files</button>
+        <div class="group-wrapper">
             <label for="customQuery">Custom Query:</label>
             <br>
-            <textarea id="customQuery" name="customQuery" rows="4">SELECT * FROM 'my_data.parquet' LIMIT 10;</textarea>
+            <textarea id="customQuery" name="customQuery" rows="4">SELECT * FROM 'fileName_1' LIMIT 10;</textarea>
         </div>
         <br>
         <button class="action-button" onclick="runQuery()">Run Query</button>
@@ -177,64 +196,157 @@
     <script type="module">
         import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.1-dev132.0/+esm';
 
-        async function loadFile() {
-            const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
-            let fileURL = '';
-            let localFile = null;
+        let fileCounter = 1;
 
-            if (dataSource === 'url') {
-                fileURL = document.getElementById('parquetUrl').value.trim();
-                if (!fileURL) return;
+        function toggleFilePInput(id) {
+            const urlInput = document.getElementById(`fileUrl_${id}`);
+            const localInput = document.getElementById(`file_${id}`);
+            const source = document.querySelector(`input[name="dataSource_${id}"]:checked`).value;
+
+            if (source === 'url') {
+                urlInput.style.display = 'block';
+                localInput.style.display = 'none';
             } else {
-                const localFileInput = document.getElementById('localParquetFile');
-                if (localFileInput.files.length === 0) return;
-                localFile = localFileInput.files[0];
+                urlInput.style.display = 'none';
+                localInput.style.display = 'block';
             }
+        }
 
-            try {
-                const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
-                const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
-                const worker = await duckdb.createWorker(bundle.mainWorker);
-                const logger = new duckdb.ConsoleLogger();
-                const db = new duckdb.AsyncDuckDB(logger, worker);
-                await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-                await db.open({ query: { castTimestampToDate: true } });
+        function addFile() {
+            fileCounter++;
+            const fileUploads = document.getElementById('fileUploads');
+            const newFileUpload = document.createElement('div');
+            newFileUpload.className = 'component-wrapper';
+            newFileUpload.innerHTML = `
+                <input type="text" id="fileName_${fileCounter}" name="fileName" placeholder="Unique Name">
+                <input type="radio" id="sourceUrl_${fileCounter}" name="dataSource_${fileCounter}" value="url" checked onchange="toggleFilePInput(${fileCounter})">
+                <label for="sourceUrl_${fileCounter}">URL</label>
+                <input type="text" id="fileUrl_${fileCounter}" name="fileUrl" placeholder="https://path/to/your/file.parquet">
+                <input type="radio" id="sourceLocal_${fileCounter}" name="dataSource_${fileCounter}" value="local" onchange="toggleFilePInput(${fileCounter})">
+                <label for="sourceLocal_${fileCounter}">Local</label>
+                <input type="file" id="file_${fileCounter}" name="file" accept=".parquet" style="display: none;">
+            `;
+            const addButton = fileUploads.querySelector('.action-button');
+            fileUploads.insertBefore(newFileUpload, addButton);
+        }
 
-                const conn = await db.connect();
+        async function loadFile() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+
+            if (mode === 'basic') {
+                const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
+                let fileURL = '';
+                let localFile = null;
 
                 if (dataSource === 'url') {
-                    await db.registerFileURL('my_data.parquet', fileURL, duckdb.DuckDBDataProtocol.HTTP, false);
+                    fileURL = document.getElementById('parquetUrl').value.trim();
+                    if (!fileURL) return;
                 } else {
-                    const buffer = await localFile.arrayBuffer();
-                    await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
+                    const localFileInput = document.getElementById('localParquetFile');
+                    if (localFileInput.files.length === 0) return;
+                    localFile = localFileInput.files[0];
                 }
 
-                const schemaResult = await conn.query(`DESCRIBE SELECT * FROM 'my_data.parquet'`);
-                const columns = schemaResult.toArray().map(row => row.column_name);
+                try {
+                    const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
+                    const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+                    const worker = await duckdb.createWorker(bundle.mainWorker);
+                    const logger = new duckdb.ConsoleLogger();
+                    const db = new duckdb.AsyncDuckDB(logger, worker);
+                    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+                    await db.open({ query: { castTimestampToDate: true } });
 
-                const columnsDropdown = document.getElementById('columns');
-                columnsDropdown.innerHTML = '<option value="*">*</option>';
-                columns.forEach(column => {
-                    const option = document.createElement('option');
-                    option.value = `"${column}"`;
-                    option.textContent = column;
-                    columnsDropdown.appendChild(option);
-                });
+                    const conn = await db.connect();
 
-                await conn.close();
-                await db.terminate();
-                await worker.terminate();
-            } catch (e) {
-                console.error(e);
-                alert('Error fetching columns: ' + e);
+                    if (dataSource === 'url') {
+                        await db.registerFileURL('my_data.parquet', fileURL, duckdb.DuckDBDataProtocol.HTTP, false);
+                    } else {
+                        const buffer = await localFile.arrayBuffer();
+                        await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
+                    }
+
+                    const schemaResult = await conn.query(`DESCRIBE SELECT * FROM 'my_data.parquet'`);
+                    const columns = schemaResult.toArray().map(row => row.column_name);
+
+                    const columnsDropdown = document.getElementById('columns');
+                    columnsDropdown.innerHTML = '<option value="*">*</option>';
+                    columns.forEach(column => {
+                        const option = document.createElement('option');
+                        option.value = `"${column}"`;
+                        option.textContent = column;
+                        columnsDropdown.appendChild(option);
+                    });
+
+                    await conn.close();
+                    await db.terminate();
+                    await worker.terminate();
+
+                    document.getElementById('queryBuilder').scrollIntoView({ behavior: 'smooth' });
+                } catch (e) {
+                    console.error(e);
+                    alert('Error fetching columns: ' + e);
+                }
+            } else {
+                const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
+                const filesToLoad = [];
+
+                for (let i = 0; i < fileInputs.length; i++) {
+                    const fileInput = fileInputs[i];
+                    const fileName = fileInput.querySelector('input[name="fileName"]').value.trim();
+                    const dataSource = fileInput.querySelector(`input[name="dataSource_${i + 1}"]:checked`).value;
+
+                    if (dataSource === 'url') {
+                        const fileUrl = fileInput.querySelector('input[name="fileUrl"]').value.trim();
+                        if (fileName && fileUrl) {
+                            filesToLoad.push({ name: fileName, url: fileUrl, source: 'url' });
+                        }
+                    } else {
+                        const file = fileInput.querySelector('input[name="file"]').files[0];
+                        if (fileName && file) {
+                            filesToLoad.push({ name: fileName, file: file, source: 'local' });
+                        }
+                    }
+                }
+
+                if (filesToLoad.length === 0) return;
+
+                try {
+                    const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
+                    const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+                    const worker = await duckdb.createWorker(bundle.mainWorker);
+                    const logger = new duckdb.ConsoleLogger();
+                    const db = new duckdb.AsyncDuckDB(logger, worker);
+                    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+                    await db.open({ query: { castTimestampToDate: true } });
+
+                    const conn = await db.connect();
+
+                    for (const file of filesToLoad) {
+                        if (file.source === 'url') {
+                            await db.registerFileURL(`${file.name}.parquet`, file.url, duckdb.DuckDBDataProtocol.HTTP, false);
+                        } else {
+                            const buffer = await file.file.arrayBuffer();
+                            await db.registerFileBuffer(`${file.name}.parquet`, new Uint8Array(buffer));
+                        }
+                    }
+
+                    await conn.close();
+                    await db.terminate();
+                    await worker.terminate();
+
+                    alert('Files loaded successfully!');
+                } catch (e) {
+                    console.error(e);
+                    alert('Error loading files: ' + e);
+                }
             }
         }
 
         async function runQuery() {
-            const queryMode = document.querySelector('input[name="queryMode"]:checked').value;
+            const mode = document.querySelector('input[name="mode"]:checked').value;
             let query;
 
-            if (queryMode === 'basic') {
+            if (mode === 'basic') {
                 const selectedColumns = Array.from(document.getElementById('columns').selectedOptions).map(o => o.value);
                 if (selectedColumns.length === 0) {
                     alert('Please select at least one column.');
@@ -251,28 +363,6 @@
                 }
             }
 
-            const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
-            let fileURL = '';
-            let localFile = null;
-
-            if (dataSource === 'url') {
-                fileURL = document.getElementById('parquetUrl').value.trim();
-                if (!fileURL) {
-                    alert('Please enter a URL for the Parquet file.');
-                    return;
-                }
-                if (!fileURL.toLowerCase().endsWith('.parquet')) {
-                    alert('The URL does not seem to point to a .parquet file. Please check the URL.');
-                }
-            } else {
-                const localFileInput = document.getElementById('localParquetFile');
-                if (localFileInput.files.length === 0) {
-                    alert('Please select a local Parquet file.');
-                    return;
-                }
-                localFile = localFileInput.files[0];
-            }
-
             try {
                 const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
                 const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
@@ -284,11 +374,51 @@
 
                 const conn = await db.connect();
 
-                if (dataSource === 'url') {
-                    await db.registerFileURL('my_data.parquet', fileURL, duckdb.DuckDBDataProtocol.HTTP, false);
+                if (mode === 'basic') {
+                    const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
+                    let fileURL = '';
+                    let localFile = null;
+
+                    if (dataSource === 'url') {
+                        fileURL = document.getElementById('parquetUrl').value.trim();
+                        if (!fileURL) {
+                            alert('Please enter a URL for the Parquet file.');
+                            return;
+                        }
+                        if (!fileURL.toLowerCase().endsWith('.parquet')) {
+                            alert('The URL does not seem to point to a .parquet file. Please check the URL.');
+                        }
+                        await db.registerFileURL('my_data.parquet', fileURL, duckdb.DuckDBDataProtocol.HTTP, false);
+                    } else {
+                        const localFileInput = document.getElementById('localParquetFile');
+                        if (localFileInput.files.length === 0) {
+                            alert('Please select a local Parquet file.');
+                            return;
+                        }
+                        localFile = localFileInput.files[0];
+                        const buffer = await localFile.arrayBuffer();
+                        await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
+                    }
                 } else {
-                    const buffer = await localFile.arrayBuffer();
-                    await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
+                    const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
+                    for (let i = 0; i < fileInputs.length; i++) {
+                        const fileInput = fileInputs[i];
+                        const fileName = fileInput.querySelector('input[name="fileName"]').value.trim();
+                        const dataSource = fileInput.querySelector(`input[name="dataSource_${i + 1}"]:checked`).value;
+
+                        if (dataSource === 'url') {
+                            const fileUrl = fileInput.querySelector('input[name="fileUrl"]').value.trim();
+                            if (fileName && fileUrl) {
+                                await db.registerFileURL(`${fileName}.parquet`, fileUrl, duckdb.DuckDBDataProtocol.HTTP, false);
+                            }
+                        } else {
+                            const file = fileInput.querySelector('input[name="file"]').files[0];
+                            if (fileName && file) {
+                                const buffer = await file.arrayBuffer();
+                                await db.registerFileBuffer(`${fileName}.parquet`, new Uint8Array(buffer));
+                            }
+                        }
+                    }
                 }
 
                 const queryResult = await conn.query(query);
@@ -337,6 +467,8 @@
                 });
                 tbody.appendChild(row);
             });
+
+            table.scrollIntoView({ behavior: 'smooth' });
         }
 
         function updateQueryMode() {
@@ -352,11 +484,23 @@
 
         // Make runQuery globally accessible for the button
         window.runQuery = runQuery;
-        window.updateQueryMode = updateQueryMode;
         window.loadFile = loadFile;
+        window.addFile = addFile;
+        window.toggleFilePInput = toggleFilePInput;
 
-        document.getElementById('modeBasic').addEventListener('change', updateQueryMode);
-        document.getElementById('modeAdvanced').addEventListener('change', updateQueryMode);
+        function updateMode() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            if (mode === 'basic') {
+                document.getElementById('basicMode').style.display = 'block';
+                document.getElementById('advancedMode').style.display = 'none';
+            } else {
+                document.getElementById('basicMode').style.display = 'none';
+                document.getElementById('advancedMode').style.display = 'block';
+            }
+        }
+
+        document.getElementById('modeBasic').addEventListener('change', updateMode);
+        document.getElementById('modeAdvanced').addEventListener('change', updateMode);
     </script>
 </body>
 </html>
