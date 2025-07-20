@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>DuckDB R2 Query</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body {
             background-color: #1a1a1a;
@@ -29,6 +30,8 @@
             border: 1px solid #555;
             border-radius: 5px;
             padding: 5px;
+            width: 100%;
+            box-sizing: border-box;
         }
         button {
             cursor: pointer;
@@ -39,6 +42,17 @@
         #queryBuilder div {
             border: 1px solid #555;
             background-color: #222;
+            display: flex;
+            flex-wrap: wrap;
+        }
+        #queryBuilder span, #queryBuilder select, #queryBuilder textarea {
+            margin: 5px;
+        }
+        #queryBuilder select {
+            flex-grow: 1;
+        }
+        #queryBuilder textarea {
+            flex-grow: 2;
         }
         #queryBuilder span {
             background-color: #333;
@@ -86,7 +100,7 @@
         <div class="component-wrapper">
             <input type="radio" id="sourceUrl" name="dataSource" value="url" checked>
             <label for="sourceUrl">Parquet File URL:</label>
-            <input type="text" id="parquetUrl" name="parquetUrl" style="width: 500px;" placeholder="https://path/to/your/file.parquet">
+            <input type="text" id="parquetUrl" name="parquetUrl" placeholder="https://path/to/your/file.parquet">
         </div>
         <div class="component-wrapper">
             <input type="radio" id="sourceLocal" name="dataSource" value="local">
@@ -108,17 +122,17 @@
         </div>
         <br>
         <div id="queryBuilder">
-            <div style="display: flex; align-items: center; padding: 5px; border-radius: 5px; width: 500px;">
-                <span style="padding: 5px;">SELECT</span>
-                <select id="columns" multiple style="width: 150px; height: 100px; margin-left: 5px;"></select>
-                <span style="padding: 5px; margin-left: 5px;">FROM 'my_data.parquet'</span>
-                <textarea id="customClauses" rows="4" style="width: 200px; margin-left: 5px;">LIMIT 10</textarea>
+            <div>
+                <span>SELECT</span>
+                <select id="columns" multiple></select>
+                <span>FROM 'my_data.parquet'</span>
+                <textarea id="customClauses" rows="4">LIMIT 10</textarea>
             </div>
         </div>
         <div id="advancedQueryBuilder" style="display:none;">
             <label for="customQuery">Custom Query:</label>
             <br>
-            <textarea id="customQuery" name="customQuery" rows="4" style="width: 500px;">SELECT * FROM 'my_data.parquet' LIMIT 10;</textarea>
+            <textarea id="customQuery" name="customQuery" rows="4">SELECT * FROM 'my_data.parquet' LIMIT 10;</textarea>
         </div>
         <br>
         <button class="action-button" onclick="runQuery()">Run Query</button>
