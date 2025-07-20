@@ -3,17 +3,50 @@
 <head>
     <title>DuckDB R2 Query</title>
     <style>
+        body {
+            background-color: #1a1a1a;
+            color: #f0f0f0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
         table {
             border-collapse: collapse;
             width: 100%;
         }
         th, td {
-            border: 1px solid black;
+            border: 1px solid #444;
             padding: 8px;
             text-align: left;
         }
         th {
-            background-color: #f2f2f2;
+            background-color: #333;
+        }
+        tbody tr:nth-child(even) {
+            background-color: #2a2a2a;
+        }
+        input, select, textarea, button {
+            background-color: #333;
+            color: #f0f0f0;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 5px;
+        }
+        button {
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #444;
+        }
+        #queryBuilder div {
+            border: 1px solid #555;
+            background-color: #222;
+        }
+        #queryBuilder span {
+            background-color: #333;
+            padding: 5px;
+            border-radius: 5px;
+        }
+        #customClauses {
+            border: 1px solid #555;
         }
     </style>
 </head>
@@ -30,23 +63,33 @@
         <input type="file" id="localParquetFile" name="localParquetFile" accept=".parquet">
     </div>
     <br>
-    <div>
+    <div id="queryBuilder">
+        <label for="queryBuilder">Custom Query:</label>
+        <br>
+        <div style="display: flex; align-items: center; padding: 5px; border-radius: 5px; width: 500px;">
+            <span style="padding: 5px;">SELECT</span>
+            <select id="columns" multiple style="width: 150px; height: 100px; margin-left: 5px;"></select>
+            <span style="padding: 5px; margin-left: 5px;">FROM 'my_data.parquet'</span>
+            <textarea id="customClauses" rows="4" style="width: 200px; margin-left: 5px;" placeholder="e.g., WHERE ... LIMIT ..."></textarea>
+        </div>
+    </div>
+    <div style="display:none;">
         <label for="customQuery">Custom Query:</label>
         <br>
         <textarea id="customQuery" name="customQuery" rows="4" style="width: 500px;">SELECT * FROM 'my_data.parquet' LIMIT 10;</textarea>
     </div>
     <br>
     <button onclick="runQuery()">Run Query</button>
-    <div style="margin-top: 10px; margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9;">
+    <div style="margin-top: 10px; margin-bottom: 10px; padding: 10px; border: 1px solid #555; background-color: #222; border-radius: 5px;">
         <strong>Instructions:</strong>
         <ul>
-            <li>Select whether you want to query a Parquet file from a URL or a local file.</li>
-            <li>If using a URL, paste the URL in the text box. The server hosting the file must have CORS enabled.</li>
-            <li>If using a local file, select the file using the file picker.</li>
-            <li>Write your SQL query in the custom query text area. The table name is <code>my_data.parquet</code>.</li>
+            <li>Select a Parquet file using either a URL or a local file.</li>
+            <li>The columns of the table will be automatically detected and displayed in the dropdown.</li>
+            <li>Select the columns you want to query, or use `*` for all columns.</li>
+            <li>Use the text area to add any `WHERE`, `GROUP BY`, `ORDER BY`, or `LIMIT` clauses.</li>
             <li>Click "Run Query" to see the results.</li>
         </ul>
-        <strong>Important Note on CORS:</strong> For DuckDB WASM to access a Parquet file from a URL, the server hosting the file (e.g., AWS S3, Azure Blob Storage, Google Cloud Storage) must be configured with Cross-Origin Resource Sharing (CORS) headers. These headers need to allow requests from the domain where this page is hosted, or be set to allow all origins (e.g., <code>Access-Control-Allow-Origin: *</code>). Without proper CORS configuration, the browser will block the request.
+        <strong>CORS Note:</strong> When using a URL, the server hosting the file must have CORS enabled.
     </div>
     <table id="resultsTable">
         <thead></thead>
@@ -56,14 +99,73 @@
     <script type="module">
         import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.1-dev132.0/+esm';
 
+        async function updateColumns() {
+            const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
+            let fileURL = '';
+            let localFile = null;
+
+            if (dataSource === 'url') {
+                fileURL = document.getElementById('parquetUrl').value.trim();
+                if (!fileURL) return;
+            } else {
+                const localFileInput = document.getElementById('localParquetFile');
+                if (localFileInput.files.length === 0) return;
+                localFile = localFileInput.files[0];
+            }
+
+            try {
+                const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
+                const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+                const worker = await duckdb.createWorker(bundle.mainWorker);
+                const logger = new duckdb.ConsoleLogger();
+                const db = new duckdb.AsyncDuckDB(logger, worker);
+                await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+                await db.open({ query: { castTimestampToDate: true } });
+
+                const conn = await db.connect();
+
+                if (dataSource === 'url') {
+                    await db.registerFileURL('my_data.parquet', fileURL, duckdb.DuckDBDataProtocol.HTTP, false);
+                } else {
+                    const buffer = await localFile.arrayBuffer();
+                    await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
+                }
+
+                const schemaResult = await conn.query(`DESCRIBE SELECT * FROM 'my_data.parquet'`);
+                const columns = schemaResult.toArray().map(row => row.column_name);
+
+                const columnsDropdown = document.getElementById('columns');
+                columnsDropdown.innerHTML = '<option value="*">*</option>';
+                columns.forEach(column => {
+                    const option = document.createElement('option');
+                    option.value = `"${column}"`;
+                    option.textContent = column;
+                    columnsDropdown.appendChild(option);
+                });
+
+                await conn.close();
+                await db.terminate();
+                await worker.terminate();
+            } catch (e) {
+                console.error(e);
+                alert('Error fetching columns: ' + e);
+            }
+        }
+
         async function runQuery() {
             const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
-            const customQuery = document.getElementById('customQuery').value.trim();
+            const selectedColumns = Array.from(document.getElementById('columns').selectedOptions).map(o => o.value);
+            const customClauses = document.getElementById('customClauses').value.trim();
 
-            if (!customQuery) {
-                alert('Please enter a query.');
+            if (selectedColumns.length === 0) {
+                alert('Please select at least one column.');
                 return;
             }
+
+            const columnsString = selectedColumns.join(', ');
+            const customQuery = `SELECT ${columnsString} FROM 'my_data.parquet' ${customClauses}`;
+            document.getElementById('customQuery').value = customQuery;
+
 
             let fileURL = '';
             let localFile = null;
@@ -154,6 +256,11 @@
 
         // Make runQuery globally accessible for the button
         window.runQuery = runQuery;
+
+        document.getElementById('parquetUrl').addEventListener('change', updateColumns);
+        document.getElementById('localParquetFile').addEventListener('change', updateColumns);
+        document.getElementById('sourceUrl').addEventListener('change', updateColumns);
+        document.getElementById('sourceLocal').addEventListener('change', updateColumns);
     </script>
 </body>
 </html>
