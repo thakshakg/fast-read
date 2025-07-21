@@ -158,13 +158,13 @@
     <div id="advancedMode" style="display:none;">
         <div class="group-wrapper" id="fileUploads">
             <div class="component-wrapper">
-                <input type="text" id="fileName_1" name="fileName" placeholder="Unique Name" required oninput="checkAdvancedInputs()">
-                <input type="radio" id="sourceUrl_1" name="dataSource_1" value="url" checked onchange="toggleFilePInput(1); checkAdvancedInputs()">
+                <input type="text" id="fileName_1" name="fileName" placeholder="Unique Name" required">
+                <input type="radio" id="sourceUrl_1" name="dataSource_1" value="url" checked onchange="toggleFilePInput(1);">
                 <label for="sourceUrl_1">URL</label>
-                <input type="text" id="fileUrl_1" name="fileUrl" placeholder="https://path/to/your/file.parquet" required oninput="checkAdvancedInputs()">
-                <input type="radio" id="sourceLocal_1" name="dataSource_1" value="local" onchange="toggleFilePInput(1); checkAdvancedInputs()">
+                <input type="text" id="fileUrl_1" name="fileUrl" placeholder="https://path/to/your/file.parquet" required">
+                <input type="radio" id="sourceLocal_1" name="dataSource_1" value="local" onchange="toggleFilePInput(1);">
                 <label for="sourceLocal_1">Local</label>
-                <input type="file" id="file_1" name="file" accept=".parquet" style="display: none;" onchange="checkAdvancedInputs()">
+                <input type="file" id="file_1" name="file" accept=".parquet" style="display: none;">
             </div>
             <button class="action-button" onclick="addFile()">Add File</button>
         </div>
@@ -239,6 +239,7 @@
 
                 if (!fileName) {
                     allValid = false;
+                    alert('Please enter custom table names for all the files');
                     break;
                 }
 
@@ -246,18 +247,21 @@
                     const fileUrl = fileInput.querySelector('input[name="fileUrl"]').value.trim();
                     if (!fileUrl) {
                         allValid = false;
+                        alert('Please enter file URL or switch to Local file upload option.');
                         break;
                     }
                 } else {
                     const file = fileInput.querySelector('input[name="file"]').files[0];
                     if (!file) {
                         allValid = false;
+                        alert('Please upload a file or switch to URL option.');
                         break;
                     }
                 }
             }
 
             document.getElementById('loadFilesAdvanced').disabled = !allValid;
+            return allValid;
         }
 
         function addFile() {
@@ -266,20 +270,21 @@
             const newFileUpload = document.createElement('div');
             newFileUpload.className = 'component-wrapper';
             newFileUpload.innerHTML = `
-                <input type="text" id="fileName_${fileCounter}" name="fileName" placeholder="Unique Name" required oninput="checkAdvancedInputs()">
-                <input type="radio" id="sourceUrl_${fileCounter}" name="dataSource_${fileCounter}" value="url" checked onchange="toggleFilePInput(${fileCounter}); checkAdvancedInputs()">
+                <input type="text" id="fileName_${fileCounter}" name="fileName" placeholder="Unique Name" required ">
+                <input type="radio" id="sourceUrl_${fileCounter}" name="dataSource_${fileCounter}" value="url" checked onchange="toggleFilePInput(${fileCounter});">
                 <label for="sourceUrl_${fileCounter}">URL</label>
-                <input type="text" id="fileUrl_${fileCounter}" name="fileUrl" placeholder="https://path/to/your/file.parquet" required oninput="checkAdvancedInputs()">
-                <input type="radio" id="sourceLocal_${fileCounter}" name="dataSource_${fileCounter}" value="local" onchange="toggleFilePInput(${fileCounter}); checkAdvancedInputs()">
+                <input type="text" id="fileUrl_${fileCounter}" name="fileUrl" placeholder="https://path/to/your/file.parquet" required ">
+                <input type="radio" id="sourceLocal_${fileCounter}" name="dataSource_${fileCounter}" value="local" onchange="toggleFilePInput(${fileCounter});">
                 <label for="sourceLocal_${fileCounter}">Local</label>
-                <input type="file" id="file_${fileCounter}" name="file" accept=".parquet" style="display: none;" onchange="checkAdvancedInputs()">
+                <input type="file" id="file_${fileCounter}" name="file" accept=".parquet" style="display: none;">
             `;
             const addButton = fileUploads.querySelector('.action-button');
             fileUploads.insertBefore(newFileUpload, addButton);
-            checkAdvancedInputs();
         }
 
         async function loadFile() {
+            if (!checkAdvancedInputs())
+                return;
             const mode = document.querySelector('input[name="mode"]:checked').value;
 
             if (mode === 'basic') {
@@ -332,7 +337,7 @@
 
                 for (let i = 0; i < fileInputs.length; i++) {
                     const fileInput = fileInputs[i];
-                    const fileName = fileInput.querySelector('input[name="fileName"]').value.trim();
+                    const fileName = fileInput.querySelector('input[name="fileName"]').value.trim()+".parquet";
                     const dataSource = fileInput.querySelector(`input[name="dataSource_${i + 1}"]:checked`).value;
 
                     if (dataSource === 'url') {
@@ -370,7 +375,7 @@
 
                     await conn.close();
 
-                    alert(`Files loaded successfully! Tables: ${tableNames.join(', ')}`);
+                    alert(`Files loaded successfully!`);
                 } catch (e) {
                     console.error(e);
                     alert('Error loading files: ' + e);
@@ -433,7 +438,7 @@
                     const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
                     for (let i = 0; i < fileInputs.length; i++) {
                         const fileInput = fileInputs[i];
-                        const fileName = fileInput.querySelector('input[name="fileName"]').value.trim();
+                        const fileName = fileInput.querySelector('input[name="fileName"]').value.trim()+".parquet";
                         const dataSource = fileInput.querySelector(`input[name="dataSource_${i + 1}"]:checked`).value;
 
                         if (dataSource === 'url') {
@@ -532,7 +537,7 @@
         document.getElementById('modeAdvanced').addEventListener('change', updateMode);
 
         // Initial check for advanced mode inputs
-        checkAdvancedInputs();
+        //checkAdvancedInputs();
     </script>
 </body>
 </html>
