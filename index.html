@@ -158,17 +158,17 @@
     <div id="advancedMode" style="display:none;">
         <div class="group-wrapper" id="fileUploads">
             <div class="component-wrapper">
-                <input type="text" id="fileName_1" name="fileName" placeholder="Unique Name">
-                <input type="radio" id="sourceUrl_1" name="dataSource_1" value="url" checked onchange="toggleFilePInput(1)">
+                <input type="text" id="fileName_1" name="fileName" placeholder="Unique Name" required oninput="checkAdvancedInputs()">
+                <input type="radio" id="sourceUrl_1" name="dataSource_1" value="url" checked onchange="toggleFilePInput(1); checkAdvancedInputs()">
                 <label for="sourceUrl_1">URL</label>
-                <input type="text" id="fileUrl_1" name="fileUrl" placeholder="https://path/to/your/file.parquet">
-                <input type="radio" id="sourceLocal_1" name="dataSource_1" value="local" onchange="toggleFilePInput(1)">
+                <input type="text" id="fileUrl_1" name="fileUrl" placeholder="https://path/to/your/file.parquet" required oninput="checkAdvancedInputs()">
+                <input type="radio" id="sourceLocal_1" name="dataSource_1" value="local" onchange="toggleFilePInput(1); checkAdvancedInputs()">
                 <label for="sourceLocal_1">Local</label>
-                <input type="file" id="file_1" name="file" accept=".parquet" style="display: none;">
+                <input type="file" id="file_1" name="file" accept=".parquet" style="display: none;" onchange="checkAdvancedInputs()">
             </div>
             <button class="action-button" onclick="addFile()">Add File</button>
         </div>
-        <button class="action-button" onclick="loadFile()" style="margin-bottom: 20px;">Load Files</button>
+        <button class="action-button" id="loadFilesAdvanced" onclick="loadFile()" style="margin-bottom: 20px;">Load Files</button>
         <div class="group-wrapper">
             <label for="customQuery">Custom Query:</label>
             <br>
@@ -197,6 +197,18 @@
         import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.1-dev132.0/+esm';
 
         let fileCounter = 1;
+        let db;
+
+        async function initDB() {
+            if (db) return;
+            const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
+            const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+            const worker = await duckdb.createWorker(bundle.mainWorker);
+            const logger = new duckdb.ConsoleLogger();
+            db = new duckdb.AsyncDuckDB(logger, worker);
+            await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+            await db.open({ query: { castTimestampToDate: true } });
+        }
 
         function toggleFilePInput(id) {
             const urlInput = document.getElementById(`fileUrl_${id}`);
@@ -206,10 +218,46 @@
             if (source === 'url') {
                 urlInput.style.display = 'block';
                 localInput.style.display = 'none';
+                urlInput.required = true;
+                localInput.required = false;
             } else {
                 urlInput.style.display = 'none';
                 localInput.style.display = 'block';
+                urlInput.required = false;
+                localInput.required = true;
             }
+        }
+
+        function checkAdvancedInputs() {
+            const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
+            let allValid = true;
+
+            for (let i = 0; i < fileInputs.length; i++) {
+                const fileInput = fileInputs[i];
+                const fileName = fileInput.querySelector('input[name="fileName"]').value.trim();
+                const dataSource = fileInput.querySelector(`input[name="dataSource_${i + 1}"]:checked`).value;
+
+                if (!fileName) {
+                    allValid = false;
+                    break;
+                }
+
+                if (dataSource === 'url') {
+                    const fileUrl = fileInput.querySelector('input[name="fileUrl"]').value.trim();
+                    if (!fileUrl) {
+                        allValid = false;
+                        break;
+                    }
+                } else {
+                    const file = fileInput.querySelector('input[name="file"]').files[0];
+                    if (!file) {
+                        allValid = false;
+                        break;
+                    }
+                }
+            }
+
+            document.getElementById('loadFilesAdvanced').disabled = !allValid;
         }
 
         function addFile() {
@@ -218,16 +266,17 @@
             const newFileUpload = document.createElement('div');
             newFileUpload.className = 'component-wrapper';
             newFileUpload.innerHTML = `
-                <input type="text" id="fileName_${fileCounter}" name="fileName" placeholder="Unique Name">
-                <input type="radio" id="sourceUrl_${fileCounter}" name="dataSource_${fileCounter}" value="url" checked onchange="toggleFilePInput(${fileCounter})">
+                <input type="text" id="fileName_${fileCounter}" name="fileName" placeholder="Unique Name" required oninput="checkAdvancedInputs()">
+                <input type="radio" id="sourceUrl_${fileCounter}" name="dataSource_${fileCounter}" value="url" checked onchange="toggleFilePInput(${fileCounter}); checkAdvancedInputs()">
                 <label for="sourceUrl_${fileCounter}">URL</label>
-                <input type="text" id="fileUrl_${fileCounter}" name="fileUrl" placeholder="https://path/to/your/file.parquet">
-                <input type="radio" id="sourceLocal_${fileCounter}" name="dataSource_${fileCounter}" value="local" onchange="toggleFilePInput(${fileCounter})">
+                <input type="text" id="fileUrl_${fileCounter}" name="fileUrl" placeholder="https://path/to/your/file.parquet" required oninput="checkAdvancedInputs()">
+                <input type="radio" id="sourceLocal_${fileCounter}" name="dataSource_${fileCounter}" value="local" onchange="toggleFilePInput(${fileCounter}); checkAdvancedInputs()">
                 <label for="sourceLocal_${fileCounter}">Local</label>
-                <input type="file" id="file_${fileCounter}" name="file" accept=".parquet" style="display: none;">
+                <input type="file" id="file_${fileCounter}" name="file" accept=".parquet" style="display: none;" onchange="checkAdvancedInputs()">
             `;
             const addButton = fileUploads.querySelector('.action-button');
             fileUploads.insertBefore(newFileUpload, addButton);
+            checkAdvancedInputs();
         }
 
         async function loadFile() {
@@ -248,14 +297,7 @@
                 }
 
                 try {
-                    const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
-                    const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
-                    const worker = await duckdb.createWorker(bundle.mainWorker);
-                    const logger = new duckdb.ConsoleLogger();
-                    const db = new duckdb.AsyncDuckDB(logger, worker);
-                    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-                    await db.open({ query: { castTimestampToDate: true } });
-
+                    await initDB();
                     const conn = await db.connect();
 
                     if (dataSource === 'url') {
@@ -278,8 +320,6 @@
                     });
 
                     await conn.close();
-                    await db.terminate();
-                    await worker.terminate();
 
                     document.getElementById('queryBuilder').scrollIntoView({ behavior: 'smooth' });
                 } catch (e) {
@@ -311,30 +351,26 @@
                 if (filesToLoad.length === 0) return;
 
                 try {
-                    const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
-                    const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
-                    const worker = await duckdb.createWorker(bundle.mainWorker);
-                    const logger = new duckdb.ConsoleLogger();
-                    const db = new duckdb.AsyncDuckDB(logger, worker);
-                    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-                    await db.open({ query: { castTimestampToDate: true } });
-
+                    await initDB();
                     const conn = await db.connect();
 
                     for (const file of filesToLoad) {
                         if (file.source === 'url') {
-                            await db.registerFileURL(`${file.name}.parquet`, file.url, duckdb.DuckDBDataProtocol.HTTP, false);
+                            console.log(`Registering URL: ${file.url} as table: ${file.name}`);
+                            await db.registerFileURL(file.name, file.url, duckdb.DuckDBDataProtocol.HTTP, false);
                         } else {
+                            console.log(`Registering local file: ${file.file.name} as table: ${file.name}`);
                             const buffer = await file.file.arrayBuffer();
-                            await db.registerFileBuffer(`${file.name}.parquet`, new Uint8Array(buffer));
+                            await db.registerFileBuffer(file.name, new Uint8Array(buffer));
                         }
                     }
 
-                    await conn.close();
-                    await db.terminate();
-                    await worker.terminate();
+                    const tables = await conn.query(`SELECT table_name FROM duckdb_tables;`);
+                    const tableNames = tables.toArray().map(row => row.table_name);
 
-                    alert('Files loaded successfully!');
+                    await conn.close();
+
+                    alert(`Files loaded successfully! Tables: ${tableNames.join(', ')}`);
                 } catch (e) {
                     console.error(e);
                     alert('Error loading files: ' + e);
@@ -364,14 +400,7 @@
             }
 
             try {
-                const JSDELIVR_BUNDLES = duckdb.getJsDelivrBundles();
-                const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
-                const worker = await duckdb.createWorker(bundle.mainWorker);
-                const logger = new duckdb.ConsoleLogger();
-                const db = new duckdb.AsyncDuckDB(logger, worker);
-                await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-                await db.open({ query: { castTimestampToDate: true } });
-
+                await initDB();
                 const conn = await db.connect();
 
                 if (mode === 'basic') {
@@ -400,6 +429,7 @@
                         await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
                     }
                 } else {
+                    // Re-register files for the query
                     const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
                     for (let i = 0; i < fileInputs.length; i++) {
                         const fileInput = fileInputs[i];
@@ -409,13 +439,13 @@
                         if (dataSource === 'url') {
                             const fileUrl = fileInput.querySelector('input[name="fileUrl"]').value.trim();
                             if (fileName && fileUrl) {
-                                await db.registerFileURL(`${fileName}.parquet`, fileUrl, duckdb.DuckDBDataProtocol.HTTP, false);
+                                await db.registerFileURL(fileName, fileUrl, duckdb.DuckDBDataProtocol.HTTP, false);
                             }
                         } else {
                             const file = fileInput.querySelector('input[name="file"]').files[0];
                             if (fileName && file) {
                                 const buffer = await file.arrayBuffer();
-                                await db.registerFileBuffer(`${fileName}.parquet`, new Uint8Array(buffer));
+                                await db.registerFileBuffer(fileName, new Uint8Array(buffer));
                             }
                         }
                     }
@@ -424,8 +454,6 @@
                 const queryResult = await conn.query(query);
 
                 await conn.close();
-                await db.terminate();
-                await worker.terminate();
 
                 displayResults(queryResult.toArray());
             } catch (e) {
@@ -487,6 +515,7 @@
         window.loadFile = loadFile;
         window.addFile = addFile;
         window.toggleFilePInput = toggleFilePInput;
+        window.checkAdvancedInputs = checkAdvancedInputs;
 
         function updateMode() {
             const mode = document.querySelector('input[name="mode"]:checked').value;
@@ -501,6 +530,9 @@
 
         document.getElementById('modeBasic').addEventListener('change', updateMode);
         document.getElementById('modeAdvanced').addEventListener('change', updateMode);
+
+        // Initial check for advanced mode inputs
+        checkAdvancedInputs();
     </script>
 </body>
 </html>
