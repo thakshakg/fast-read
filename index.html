@@ -120,6 +120,10 @@
             <input type="radio" id="modeAdvanced" name="mode" value="advanced">
             <label for="modeAdvanced">Advanced</label>
         </div>
+        <div class="radio-group">
+            <input type="radio" id="modeAI" name="mode" value="ai">
+            <label for="modeAI">AI Mode</label>
+        </div>
     </div>
 
     <div id="basicMode">
@@ -177,6 +181,18 @@
         <br>
         <button class="action-button" onclick="runQuery()">Run Query</button>
     </div>
+    <div id="aiMode" style="display:none;">
+        <div class="group-wrapper">
+            <label for="aiQuery">Natural Language Query:</label>
+            <br>
+            <textarea id="aiQuery" name="aiQuery" rows="4" placeholder="e.g., Show me the first 10 rows of the table"></textarea>
+        </div>
+        <button class="action-button" onclick="generateAIQuery()">Generate Query</button>
+        <div class="group-wrapper" style="margin-top: 20px;">
+            <label>AI Generated Query:</label>
+            <div id="aiResponse" style="overflow-y: auto; height: 100px; border: 1px solid #555; padding: 10px; background-color: #222; border-radius: 5px;"></div>
+        </div>
+    </div>
     <div style="margin-top: 10px; margin-bottom: 10px; padding: 10px; border: 1px solid #555; background-color: #222; border-radius: 5px;">
         <strong>Instructions:</strong>
         <ul>
@@ -193,6 +209,7 @@
         <tbody></tbody>
     </table>
 
+    <script src="https://js.puter.com/v2/"></script>
     <script type="module">
         import * as duckdb from 'https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.1-dev132.0/+esm';
 
@@ -522,19 +539,44 @@
         window.toggleFilePInput = toggleFilePInput;
         window.checkAdvancedInputs = checkAdvancedInputs;
 
+        async function generateAIQuery() {
+            const aiQuery = document.getElementById('aiQuery').value.trim();
+            if (!aiQuery) {
+                alert('Please enter a natural language query.');
+                return;
+            }
+
+            const aiResponseDiv = document.getElementById('aiResponse');
+            aiResponseDiv.innerHTML = 'Generating query...';
+
+            try {
+                const response = await puter.ai.chat(aiQuery);
+                aiResponseDiv.innerText = response;
+            } catch (e) {
+                console.error(e);
+                aiResponseDiv.innerText = 'Error generating query: ' + e;
+            }
+        }
+        window.generateAIQuery = generateAIQuery;
+
         function updateMode() {
             const mode = document.querySelector('input[name="mode"]:checked').value;
+            document.getElementById('basicMode').style.display = 'none';
+            document.getElementById('advancedMode').style.display = 'none';
+            document.getElementById('aiMode').style.display = 'none';
+
             if (mode === 'basic') {
                 document.getElementById('basicMode').style.display = 'block';
-                document.getElementById('advancedMode').style.display = 'none';
-            } else {
-                document.getElementById('basicMode').style.display = 'none';
+            } else if (mode === 'advanced') {
                 document.getElementById('advancedMode').style.display = 'block';
+            } else if (mode === 'ai') {
+                document.getElementById('aiMode').style.display = 'block';
             }
         }
 
         document.getElementById('modeBasic').addEventListener('change', updateMode);
         document.getElementById('modeAdvanced').addEventListener('change', updateMode);
+        document.getElementById('modeAI').addEventListener('change', updateMode);
 
         // Initial check for advanced mode inputs
         //checkAdvancedInputs();
