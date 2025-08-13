@@ -8,41 +8,43 @@ The application is a single HTML file that can be hosted on any static web hosti
 
 ## Features
 
-*   **Query Remote Parquet Files:** Directly query Parquet files from any HTTP(S) URL.
-*   **Client-Side Processing:** All query processing is done in the user's browser using DuckDB WASM. No server-side computation resources are needed for querying.
-*   **Zero Backend (for Querying):** The core query functionality doesn't rely on a backend application server.
-*   **SQL Interface:** Use standard SQL syntax to query data.
-*   **Basic Table Display:** View query results in a simple HTML table.
-*   **Deploy Anywhere:** Host as a static site (GitHub Pages, Cloudflare Pages, etc.) or run via Docker.
-*   **Cost-Effective:** Minimal hosting costs, especially when using free static site providers and leveraging existing storage.
+*   **Two Query Modes:** A "Basic" mode for single-file queries and an "Advanced" mode for multi-file queries.
+*   **Flexible Data Loading:** Load Parquet files from public URLs or from your local machine.
+*   **Multi-File Queries:** In Advanced Mode, load multiple Parquet files and query them as separate tables.
+*   **AI-Powered Query Generation:** In Advanced Mode, write natural language prompts (e.g., "show me the first 10 rows") and have an AI assistant generate the SQL for you.
+*   **Automatic Schema Detection:** The tool automatically inspects the Parquet file and displays its schema.
+*   **Custom SQL Execution:** Write and run your own custom SQL queries against the loaded data.
+*   **Client-Side Processing:** All query processing is done in the user's browser using DuckDB-WASM. No server-side computation is needed.
+*   **Deploy Anywhere:** As a single HTML file, the tool can be hosted on any static web hosting service or run locally.
 
-## How it Works
+## Usage
 
-1.  **User Provides URL:** The user inputs the HTTP(S) URL of a Parquet file.
-2.  **DuckDB WASM:** The browser loads DuckDB compiled to WebAssembly.
-3.  **Direct HTTP Request:** DuckDB makes an HTTP GET request (potentially with range requests for partial reads) to fetch the Parquet file data directly from the provided URL.
-4.  **Client-Side Query Execution:** The SQL query (currently a `SELECT * ... LIMIT 10`) is executed entirely within the browser against the fetched data.
-5.  **Results Displayed:** The query results are rendered in an HTML table.
+The tool has two main modes: **Basic** for single-file analysis and **Advanced** for multi-file queries and AI-powered features.
 
-**Crucial Dependency: CORS (Cross-Origin Resource Sharing)**
-For this tool to access a Parquet file from a given URL, the server hosting that file *must* be configured with appropriate CORS headers. Specifically, the `Access-Control-Allow-Origin` header must permit requests from the domain where this HTML tool is hosted (or be set to `*` to allow all origins). Without correct CORS policies on the data host, browsers will block these cross-origin requests as a security measure.
+### Basic Mode
 
-## Prerequisites
+This mode is for quickly querying a single Parquet file.
 
-*   A modern web browser that supports WebAssembly (most current browsers do).
-*   The Parquet file you want to query must be accessible via an HTTP(S) URL.
-*   **Correct CORS configuration** on the server hosting the Parquet file.
+1.  **Select Data Source:** Choose to load a file from a URL or your local machine.
+2.  **Load Data:** Provide the URL or select the local `.parquet` file, then click **Load File**. The tool will load the data and display the detected column names.
+3.  **Build Query:**
+    *   Select one or more columns from the dropdown.
+    *   In the text area, add any SQL clauses like `WHERE`, `GROUP BY`, `ORDER BY`, or `LIMIT`.
+4.  **Run Query:** Click **Run Query** to see the results.
 
-## Getting Started / Usage
+### Advanced Mode
 
-1.  **Obtain the `index.html` file.**
-2.  **Open `index.html` in your web browser:**
-    *   You can open it directly as a local file (`file:///path/to/index.html`).
-    *   For development or to ensure proper module loading, you might serve it via a local HTTP server (e.g., `python -m http.server`).
-3.  **Enter Parquet File URL:** In the input field labeled "Parquet File URL:", paste the full HTTP(S) URL to your `.parquet` file.
-    *   Example: `https://data-crimedecoder.com/books.parquet` (This is a publicly accessible test file with open CORS).
-4.  **Run Query:** Click the "Run Query" button.
-5.  **View Results:** The first 10 rows of the Parquet file will be displayed in the table below.
+This mode allows you to load multiple files and use the AI assistant.
+
+1.  **Add Files:**
+    *   For each file, assign a **Unique Name** that will be used as its table name in your queries.
+    *   Select the source (URL or Local) and provide the file.
+    *   Click **Add File** to add more file inputs.
+2.  **Load Files:** Once all files are configured, click **Load Files**.
+3.  **Write Query:** You have two options:
+    *   **Manual SQL:** Write a standard SQL query in the **Custom Query** text area, referencing the files by the unique names you provided.
+    *   **AI Assistant:** In the **Natural Language Query** text area, write a plain-English request (e.g., "show me the first 20 rows from the sales table"). Click **Generate Query**, and the AI will write the SQL for you.
+4.  **Run Query:** Click **Run Query** to execute the query in the text area and view the results.
 
 ## Deployment
 
@@ -67,6 +69,32 @@ A `Dockerfile` is provided to containerize the application using Nginx to serve 
     docker run -d -p 8080:80 parquet-query-tool
     ```
     The application will be accessible at `http://localhost:8080`.
+### 🖥️ Running Locally
+
+Since this is a client-side application, you can run it locally without any complex setup.
+
+#### 📁 Steps to Run
+
+- **Create a new folder** on your computer.
+- **Download** the `index.html` file and place it inside the new folder.
+- **Start a simple web server**:
+   - Open your terminal or command prompt.
+   - Navigate into the folder.
+   - If you have Python installed, run:
+     ```bash
+     python -m http.server
+     ```
+- **Open your web browser** and go to:
+   - `http://127.0.0.1:8000` or
+   - `http://localhost:8000`
+
+You should now see the application running.
+
+#### ⚠️ Note
+
+While you can open the `index.html` file directly in the browser, some browser security policies may restrict functionality when run as a local file (`file:///...`). **Running it from a local web server is the recommended approach.**
+
+---
 
 ## Important Note on CORS
 
@@ -98,10 +126,7 @@ Consult the documentation for your specific cloud provider or HTTP server on how
 
 ## Future Enhancements (Ideas)
 
-*   **Custom SQL Queries:** Allow users to input their own SQL queries instead of a fixed `LIMIT 10`.
 *   **Advanced Filtering/Aggregation UI:** Provide UI elements to build filters and aggregations without writing raw SQL.
 *   **Data Visualization:** Integrate basic charting libraries (e.g., Chart.js) to visualize query results.
-*   **Schema Viewer:** Display the schema of the Parquet file.
 *   **Download Results:** Allow users to download query results (e.g., as CSV).
-*   **Improved Error Handling and User Feedback.**
 ```
