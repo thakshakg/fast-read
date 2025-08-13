@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>DuckDB R2 Query</title>
+    <title>ParQuery</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body {
@@ -206,6 +206,7 @@
 
         let fileCounter = 1;
         let db;
+        let loadedFileMetadata = [];
 
         async function initDB() {
             if (db) return;
@@ -291,108 +292,115 @@
         }
 
         async function loadFile() {
-            if (!checkAdvancedInputs())
-                return;
             const mode = document.querySelector('input[name="mode"]:checked').value;
-
             if (mode === 'basic') {
-                const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
-                let fileURL = '';
-                let localFile = null;
-
-                if (dataSource === 'url') {
-                    fileURL = document.getElementById('parquetUrl').value.trim();
-                    if (!fileURL) return;
-                } else {
-                    const localFileInput = document.getElementById('localParquetFile');
-                    if (localFileInput.files.length === 0) return;
-                    localFile = localFileInput.files[0];
-                }
-
-                try {
-                    await initDB();
-                    const conn = await db.connect();
-
-                    if (dataSource === 'url') {
-                        await db.registerFileURL('my_data.parquet', fileURL, duckdb.DuckDBDataProtocol.HTTP, false);
-                    } else {
-                        const buffer = await localFile.arrayBuffer();
-                        await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
-                    }
-
-                    const schemaResult = await conn.query(`DESCRIBE SELECT * FROM 'my_data.parquet'`);
-                    const columns = schemaResult.toArray().map(row => row.column_name);
-
-                    const columnsDropdown = document.getElementById('columns');
-                    columnsDropdown.innerHTML = '<option value="*">*</option>';
-                    columns.forEach(column => {
-                        const option = document.createElement('option');
-                        option.value = `"${column}"`;
-                        option.textContent = column;
-                        columnsDropdown.appendChild(option);
-                    });
-
-                    await conn.close();
-
-                    document.getElementById('queryBuilder').scrollIntoView({ behavior: 'smooth' });
-                } catch (e) {
-                    console.error(e);
-                    alert('Error fetching columns: ' + e);
-                }
+                await loadBasicFile();
             } else {
-                const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
-                const filesToLoad = [];
-
-                for (let i = 0; i < fileInputs.length; i++) {
-                    const fileInput = fileInputs[i];
-                    const fileName = fileInput.querySelector('input[name="fileName"]').value.trim()+".parquet";
-                    const dataSource = fileInput.querySelector(`input[name="dataSource_${i + 1}"]:checked`).value;
-
-                    if (dataSource === 'url') {
-                        const fileUrl = fileInput.querySelector('input[name="fileUrl"]').value.trim();
-                        if (fileName && fileUrl) {
-                            filesToLoad.push({ name: fileName, url: fileUrl, source: 'url' });
-                        }
-                    } else {
-                        const file = fileInput.querySelector('input[name="file"]').files[0];
-                        if (fileName && file) {
-                            filesToLoad.push({ name: fileName, file: file, source: 'local' });
-                        }
-                    }
-                }
-
-                if (filesToLoad.length === 0) return;
-
-                try {
-                    await initDB();
-                    const conn = await db.connect();
-
-                    for (const file of filesToLoad) {
-                        if (file.source === 'url') {
-                            console.log(`Registering URL: ${file.url} as table: ${file.name}`);
-                            await db.registerFileURL(file.name, file.url, duckdb.DuckDBDataProtocol.HTTP, false);
-                        } else {
-                            console.log(`Registering local file: ${file.file.name} as table: ${file.name}`);
-                            const buffer = await file.file.arrayBuffer();
-                            await db.registerFileBuffer(file.name, new Uint8Array(buffer));
-                        }
-                    }
-
-                    const tables = await conn.query(`SELECT table_name FROM duckdb_tables;`);
-                    const tableNames = tables.toArray().map(row => row.table_name);
-
-                    await conn.close();
-
-                    alert(`Files loaded successfully!`);
-                } catch (e) {
-                    console.error(e);
-                    alert('Error loading files: ' + e);
+                if (checkAdvancedInputs()) {
+                    await loadAdvancedFiles();
                 }
             }
         }
 
+        async function loadBasicFile() {
+            const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
+            let fileInfo;
+
+            if (dataSource === 'url') {
+                const fileURL = document.getElementById('parquetUrl').value.trim();
+                if (!fileURL) return;
+                fileInfo = { source: 'url', url: fileURL };
+            } else {
+                const localFileInput = document.getElementById('localParquetFile');
+                if (localFileInput.files.length === 0) return;
+                fileInfo = { source: 'local', file: localFileInput.files[0] };
+            }
+
+            try {
+                await initDB();
+                const conn = await db.connect();
+
+                if (fileInfo.source === 'url') {
+                    await db.registerFileURL('my_data.parquet', fileInfo.url, duckdb.DuckDBDataProtocol.HTTP, false);
+                } else {
+                    const buffer = await fileInfo.file.arrayBuffer();
+                    await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
+                }
+
+                const schemaResult = await conn.query(`DESCRIBE SELECT * FROM 'my_data.parquet'`);
+                const columns = schemaResult.toArray().map(row => ({ name: row.column_name, type: row.column_type }));
+
+                loadedFileMetadata = [{ tableName: 'my_data.parquet', columns: columns }];
+
+                const columnsDropdown = document.getElementById('columns');
+                columnsDropdown.innerHTML = '<option value="*">*</option>';
+                columns.forEach(column => {
+                    const option = document.createElement('option');
+                    option.value = `"${column.name}"`;
+                    option.textContent = column.name;
+                    columnsDropdown.appendChild(option);
+                });
+
+                await conn.close();
+                document.getElementById('queryBuilder').scrollIntoView({ behavior: 'smooth' });
+            } catch (e) {
+                console.error(e);
+                alert('Error fetching columns: ' + e);
+            }
+        }
+
+        async function loadAdvancedFiles() {
+            const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
+            const filesToLoad = [];
+
+            for (let i = 0; i < fileInputs.length; i++) {
+                const fileInput = fileInputs[i];
+                const fileName = fileInput.querySelector('input[name="fileName"]').value.trim() + ".parquet";
+                const dataSource = fileInput.querySelector(`input[name="dataSource_${i + 1}"]:checked`).value;
+
+                if (dataSource === 'url') {
+                    const fileUrl = fileInput.querySelector('input[name="fileUrl"]').value.trim();
+                    if (fileName && fileUrl) {
+                        filesToLoad.push({ name: fileName, url: fileUrl, source: 'url' });
+                    }
+                } else {
+                    const file = fileInput.querySelector('input[name="file"]').files[0];
+                    if (fileName && file) {
+                        filesToLoad.push({ name: fileName, file: file, source: 'local' });
+                    }
+                }
+            }
+
+            if (filesToLoad.length === 0) return;
+
+            try {
+                loadedFileMetadata = []; // Reset
+                await initDB();
+                const conn = await db.connect();
+                
+                for (const file of filesToLoad) {
+                    if (file.source === 'url') {
+                        await db.registerFileURL(file.name, file.url, duckdb.DuckDBDataProtocol.HTTP, false);
+                    } else {
+                        const buffer = await file.file.arrayBuffer();
+                        await db.registerFileBuffer(file.name, new Uint8Array(buffer));
+                    }
+
+                    const schemaResult = await conn.query(`DESCRIBE SELECT * FROM '${file.name}'`);
+                    const columns = schemaResult.toArray().map(row => ({ name: row.column_name, type: row.column_type }));
+                    loadedFileMetadata.push({ tableName: file.name, columns: columns });
+                }
+                
+                await conn.close();
+                alert(`Files loaded successfully!`);
+            } catch (e) {
+                console.error(e);
+                alert('Error loading files: ' + e);
+            }
+        }
+
+
         async function runQuery() {
-            console.log("runQuery: start");
             const mode = document.querySelector('input[name="mode"]:checked').value;
             let query;
 
@@ -412,97 +420,23 @@
                     return;
                 }
 
-                const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
-                const uniqueNames = [];
-                for (let i = 0; i < fileInputs.length; i++) {
-                    const fileInput = fileInputs[i];
-                    const uniqueName = fileInput.querySelector('input[name="fileName"]').value.trim();
-                    if (uniqueName) {
-                        uniqueNames.push(uniqueName);
-                    }
-                }
-
+                const uniqueNames = loadedFileMetadata.map(f => f.tableName.replace('.parquet', ''));
                 uniqueNames.sort((a, b) => b.length - a.length);
 
                 for (const name of uniqueNames) {
                     const regex = new RegExp(`\\b${name}\\b(?!\\.parquet)`, 'g');
-                    query = query.replace(regex, `${name}.parquet`);
+                    query = query.replace(regex, `'${name}.parquet'`);
                 }
-                console.log("runQuery: query modified:", query);
             }
 
             try {
-                console.log("runQuery: in try block");
                 await initDB();
                 const conn = await db.connect();
-                console.log("runQuery: db connected");
-
-                if (mode === 'basic') {
-                    console.log("runQuery: basic mode path");
-                    const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
-                    let fileURL = '';
-                    let localFile = null;
-
-                    if (dataSource === 'url') {
-                        fileURL = document.getElementById('parquetUrl').value.trim();
-                        if (!fileURL) {
-                            alert('Please enter a URL for the Parquet file.');
-                            return;
-                        }
-                        if (!fileURL.toLowerCase().endsWith('.parquet')) {
-                            alert('The URL does not seem to point to a .parquet file. Please check the URL.');
-                        }
-                        await db.registerFileURL('my_data.parquet', fileURL, duckdb.DuckDBDataProtocol.HTTP, false);
-                    } else {
-                        const localFileInput = document.getElementById('localParquetFile');
-                        if (localFileInput.files.length === 0) {
-                            alert('Please select a local Parquet file.');
-                            return;
-                        }
-                        localFile = localFileInput.files[0];
-                        const buffer = await localFile.arrayBuffer();
-                        await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
-                    }
-                } else {
-                    console.log("runQuery: advanced mode path, starting re-registration");
-                    // Re-register files for the query
-                    const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
-                    console.log(`runQuery: found ${fileInputs.length} file inputs`);
-                    for (let i = 0; i < fileInputs.length; i++) {
-                        console.log(`runQuery: processing file input ${i}`);
-                        const fileInput = fileInputs[i];
-                        const fileName = fileInput.querySelector('input[name="fileName"]').value.trim()+".parquet";
-                        const dataSource = fileInput.querySelector(`input[name="dataSource_${i + 1}"]:checked`).value;
-
-                        if (dataSource === 'url') {
-                            console.log(`runQuery: file ${i} is URL`);
-                            const fileUrl = fileInput.querySelector('input[name="fileUrl"]').value.trim();
-                            if (fileName && fileUrl) {
-                                await db.registerFileURL(fileName, fileUrl, duckdb.DuckDBDataProtocol.HTTP, false);
-                                console.log(`runQuery: registered URL for ${fileName}`);
-                            }
-                        } else {
-                            console.log(`runQuery: file ${i} is local`);
-                            const file = fileInput.querySelector('input[name="file"]').files[0];
-                            if (fileName && file) {
-                                const buffer = await file.arrayBuffer();
-                                await db.registerFileBuffer(fileName, new Uint8Array(buffer));
-                                console.log(`runQuery: registered buffer for ${fileName}`);
-                            }
-                        }
-                    }
-                    console.log("runQuery: finished re-registration");
-                }
-
-                console.log("runQuery: executing final query:", query);
                 const queryResult = await conn.query(query);
-                console.log("runQuery: query executed successfully");
-
                 await conn.close();
-
                 displayResults(queryResult.toArray());
             } catch (e) {
-                console.error("runQuery: caught error:", e);
+                console.error("Error running query:", e);
                 alert('Error running query: ' + e);
             }
         }
@@ -573,24 +507,20 @@
             customQueryTextArea.value = 'Generating query...';
 
             try {
-                await initDB();
-                const conn = await db.connect();
-
-                const tablesResult = await conn.query(`SELECT table_name FROM duckdb_tables;`);
-                const tables = tablesResult.toArray().map(row => row.table_name);
-
-                let schemaPrompt = '';
-                for (const tableName of tables) {
-                    const schemaResult = await conn.query(`DESCRIBE SELECT * FROM '${tableName}';`);
-                    const columns = schemaResult.toArray().map(row => `  - ${row.column_name} (${row.column_type})`).join('\n');
-                    schemaPrompt += `Table: '${tableName}'\nColumns:\n${columns}\n\n`;
+                if (loadedFileMetadata.length === 0) {
+                    customQueryTextArea.value = 'Error: No tables found. Please load files first.';
+                    alert('No tables found. Please load one or more files first.');
+                    return;
                 }
 
-                await conn.close();
+                let schemaPrompt = '';
+                for (const table of loadedFileMetadata) {
+                    const columns = table.columns.map(col => `  - ${col.name} (${col.type})`).join('\n');
+                    schemaPrompt += `Table: '${table.tableName}'\nColumns:\n${columns}\n\n`;
+                }
 
-                const fullPrompt = `You are a SQL expert. Your task is to convert natural language questions into SQL queries. You will be given the schemas of the available tables and a question from theuser. You must only return the SQL query, with no additional explanation or text.\n\nHere are the available tables:\n\n${schemaPrompt}User's question: "${naturalLanguageQuery}"`;
-
-                const aiResponse = await puter.ai.chat(fullPrompt);
+                const fullPrompt = `You are a DuckDB SQL(https://duckdb.org/docs/stable/sql/dialect/friendly_sql.html) expert. Your task is to convert natural language questions into SQL queries. You will be given the schemas of the available tables and a question from the user. You must only return the SQL query only, with no additional explanation or text or markdown.\n\nHere are the available tables:\n\n${schemaPrompt}User's question: "${naturalLanguageQuery}"`;
+                const aiResponse = await puter.ai.chat(fullPrompt, {model: 'google/gemini-2.5-pro-preview' });
                 customQueryTextArea.value = aiResponse;
 
             } catch (e) {
