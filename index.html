@@ -120,10 +120,6 @@
             <input type="radio" id="modeAdvanced" name="mode" value="advanced">
             <label for="modeAdvanced">Advanced</label>
         </div>
-        <div class="radio-group">
-            <input type="radio" id="modeAI" name="mode" value="ai">
-            <label for="modeAI">AI Mode</label>
-        </div>
     </div>
 
     <div id="basicMode">
@@ -174,24 +170,19 @@
         </div>
         <button class="action-button" id="loadFilesAdvanced" onclick="loadFile()" style="margin-bottom: 20px;">Load Files</button>
         <div class="group-wrapper">
+            <label for="aiQuery">Natural Language Query:</label>
+            <br>
+            <textarea id="aiQuery" name="aiQuery" rows="4" placeholder="e.g., Show me the first 10 rows of the table"></textarea>
+            <br>
+            <button class="action-button" onclick="generateAdvancedAIQuery()">Generate Query</button>
+        </div>
+        <div class="group-wrapper">
             <label for="customQuery">Custom Query:</label>
             <br>
             <textarea id="customQuery" name="customQuery" rows="4">SELECT * FROM 'fileName_1' LIMIT 10;</textarea>
         </div>
         <br>
         <button class="action-button" onclick="runQuery()">Run Query</button>
-    </div>
-    <div id="aiMode" style="display:none;">
-        <div class="group-wrapper">
-            <label for="aiQuery">Natural Language Query:</label>
-            <br>
-            <textarea id="aiQuery" name="aiQuery" rows="4" placeholder="e.g., Show me the first 10 rows of the table"></textarea>
-        </div>
-        <button class="action-button" onclick="generateAIQuery()">Generate Query</button>
-        <div class="group-wrapper" style="margin-top: 20px;">
-            <label>AI Generated Query:</label>
-            <div id="aiResponse" style="overflow-y: auto; height: 100px; border: 1px solid #555; padding: 10px; background-color: #222; border-radius: 5px;"></div>
-        </div>
     </div>
     <div style="margin-top: 10px; margin-bottom: 10px; padding: 10px; border: 1px solid #555; background-color: #222; border-radius: 5px;">
         <strong>Instructions:</strong>
@@ -401,6 +392,7 @@
         }
 
         async function runQuery() {
+            console.log("runQuery: start");
             const mode = document.querySelector('input[name="mode"]:checked').value;
             let query;
 
@@ -419,13 +411,34 @@
                     alert('Please enter a custom query.');
                     return;
                 }
+
+                const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
+                const uniqueNames = [];
+                for (let i = 0; i < fileInputs.length; i++) {
+                    const fileInput = fileInputs[i];
+                    const uniqueName = fileInput.querySelector('input[name="fileName"]').value.trim();
+                    if (uniqueName) {
+                        uniqueNames.push(uniqueName);
+                    }
+                }
+
+                uniqueNames.sort((a, b) => b.length - a.length);
+
+                for (const name of uniqueNames) {
+                    const regex = new RegExp(`\\b${name}\\b(?!\\.parquet)`, 'g');
+                    query = query.replace(regex, `${name}.parquet`);
+                }
+                console.log("runQuery: query modified:", query);
             }
 
             try {
+                console.log("runQuery: in try block");
                 await initDB();
                 const conn = await db.connect();
+                console.log("runQuery: db connected");
 
                 if (mode === 'basic') {
+                    console.log("runQuery: basic mode path");
                     const dataSource = document.querySelector('input[name="dataSource"]:checked').value;
                     let fileURL = '';
                     let localFile = null;
@@ -451,35 +464,45 @@
                         await db.registerFileBuffer('my_data.parquet', new Uint8Array(buffer));
                     }
                 } else {
+                    console.log("runQuery: advanced mode path, starting re-registration");
                     // Re-register files for the query
                     const fileInputs = document.querySelectorAll('#fileUploads .component-wrapper');
+                    console.log(`runQuery: found ${fileInputs.length} file inputs`);
                     for (let i = 0; i < fileInputs.length; i++) {
+                        console.log(`runQuery: processing file input ${i}`);
                         const fileInput = fileInputs[i];
                         const fileName = fileInput.querySelector('input[name="fileName"]').value.trim()+".parquet";
                         const dataSource = fileInput.querySelector(`input[name="dataSource_${i + 1}"]:checked`).value;
 
                         if (dataSource === 'url') {
+                            console.log(`runQuery: file ${i} is URL`);
                             const fileUrl = fileInput.querySelector('input[name="fileUrl"]').value.trim();
                             if (fileName && fileUrl) {
                                 await db.registerFileURL(fileName, fileUrl, duckdb.DuckDBDataProtocol.HTTP, false);
+                                console.log(`runQuery: registered URL for ${fileName}`);
                             }
                         } else {
+                            console.log(`runQuery: file ${i} is local`);
                             const file = fileInput.querySelector('input[name="file"]').files[0];
                             if (fileName && file) {
                                 const buffer = await file.arrayBuffer();
                                 await db.registerFileBuffer(fileName, new Uint8Array(buffer));
+                                console.log(`runQuery: registered buffer for ${fileName}`);
                             }
                         }
                     }
+                    console.log("runQuery: finished re-registration");
                 }
 
+                console.log("runQuery: executing final query:", query);
                 const queryResult = await conn.query(query);
+                console.log("runQuery: query executed successfully");
 
                 await conn.close();
 
                 displayResults(queryResult.toArray());
             } catch (e) {
-                console.error(e);
+                console.error("runQuery: caught error:", e);
                 alert('Error running query: ' + e);
             }
         }
@@ -539,44 +562,59 @@
         window.toggleFilePInput = toggleFilePInput;
         window.checkAdvancedInputs = checkAdvancedInputs;
 
-        async function generateAIQuery() {
-            const aiQuery = document.getElementById('aiQuery').value.trim();
-            if (!aiQuery) {
+        async function generateAdvancedAIQuery() {
+            const naturalLanguageQuery = document.getElementById('aiQuery').value.trim();
+            if (!naturalLanguageQuery) {
                 alert('Please enter a natural language query.');
                 return;
             }
 
-            const aiResponseDiv = document.getElementById('aiResponse');
-            aiResponseDiv.innerHTML = 'Generating query...';
+            const customQueryTextArea = document.getElementById('customQuery');
+            customQueryTextArea.value = 'Generating query...';
 
             try {
-                const response = await puter.ai.chat(aiQuery);
-                aiResponseDiv.innerText = response;
+                await initDB();
+                const conn = await db.connect();
+
+                const tablesResult = await conn.query(`SELECT table_name FROM duckdb_tables;`);
+                const tables = tablesResult.toArray().map(row => row.table_name);
+
+                let schemaPrompt = '';
+                for (const tableName of tables) {
+                    const schemaResult = await conn.query(`DESCRIBE SELECT * FROM '${tableName}';`);
+                    const columns = schemaResult.toArray().map(row => `  - ${row.column_name} (${row.column_type})`).join('\n');
+                    schemaPrompt += `Table: '${tableName}'\nColumns:\n${columns}\n\n`;
+                }
+
+                await conn.close();
+
+                const fullPrompt = `You are a SQL expert. Your task is to convert natural language questions into SQL queries. You will be given the schemas of the available tables and a question from theuser. You must only return the SQL query, with no additional explanation or text.\n\nHere are the available tables:\n\n${schemaPrompt}User's question: "${naturalLanguageQuery}"`;
+
+                const aiResponse = await puter.ai.chat(fullPrompt);
+                customQueryTextArea.value = aiResponse;
+
             } catch (e) {
                 console.error(e);
-                aiResponseDiv.innerText = 'Error generating query: ' + e;
+                customQueryTextArea.value = 'Error generating query: ' + e;
+                alert('Error generating query: ' + e);
             }
         }
-        window.generateAIQuery = generateAIQuery;
+        window.generateAdvancedAIQuery = generateAdvancedAIQuery;
 
         function updateMode() {
             const mode = document.querySelector('input[name="mode"]:checked').value;
             document.getElementById('basicMode').style.display = 'none';
             document.getElementById('advancedMode').style.display = 'none';
-            document.getElementById('aiMode').style.display = 'none';
 
             if (mode === 'basic') {
                 document.getElementById('basicMode').style.display = 'block';
             } else if (mode === 'advanced') {
                 document.getElementById('advancedMode').style.display = 'block';
-            } else if (mode === 'ai') {
-                document.getElementById('aiMode').style.display = 'block';
             }
         }
 
         document.getElementById('modeBasic').addEventListener('change', updateMode);
         document.getElementById('modeAdvanced').addEventListener('change', updateMode);
-        document.getElementById('modeAI').addEventListener('change', updateMode);
 
         // Initial check for advanced mode inputs
         //checkAdvancedInputs();
